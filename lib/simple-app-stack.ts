@@ -57,7 +57,8 @@ export class SimpleAppStack extends cdk.Stack {
         memorySize: 128,
         environment: {
           CAST_TABLE_NAME: movieCastsTable.tableName,
-          REGION: "eu-west-1",
+          TABLE_NAME: moviesTable.tableName,
+          REGION: cdk.Aws.REGION,
         },
       }
     );
@@ -115,8 +116,9 @@ export class SimpleAppStack extends cdk.Stack {
         },
       });
 
-    moviesTable.grantReadData(getMovieByIdFn)
+    moviesTable.grantReadData(getMovieByIdFn);
     movieCastsTable.grantReadData(getMovieCastMembersFn);
+    moviesTable.grantReadData(getMovieCastMembersFn);
     moviesTable.grantReadData(getAllMoviesFn);
 
     new cdk.CfnOutput(this, "Simple Function Url", { value: simpleFnURL.url });

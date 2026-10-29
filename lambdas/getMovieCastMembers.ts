@@ -2,9 +2,10 @@ import { Handler } from "aws-lambda";
 import {
   QueryCommand,
   QueryCommandInput,
+  GetCommand
 } from "@aws-sdk/lib-dynamodb";
 import { createDDbDocClient, response } from "../shared/util";
-import { MovieCast, MovieCastResponse } from "../shared/types";
+import { MovieCast, MovieCastResponse, Movie} from "../shared/types";
 
 const ddbDocClient = createDDbDocClient();
 
@@ -61,9 +62,35 @@ export const handler: Handler = async (event, context) => {
     const body: MovieCastResponse = {
       cast: commandOutput.Items as MovieCast[],
     };
-    return response(200, { data: body })
+    
+    // Include movie metadata only when facts=true
+    if (queryParams.facts === "true") {
+      const movieOutput = await ddbDocClient.send(
+        new GetCommand({
+          TableName: process.env.TABLE_NAME,
+          Key: {
+            id: movieId,
+          },
+          ProjectionExpression: "#t, genre_ids, overview",
+          ExpressionAttributeNames: {
+            "#t": "title",
+          },
+        })
+      );
+
+      if (movieOutput.Item) {
+        const movie = movieOutput.Item as Pick<
+          Movie,
+          "title" | "genre_ids" | "overview"
+        >;
+
+        body.movie = movie;
+      }
+    }
+
+    return response(200, { data: body });
   } catch (error: any) {
     console.log(JSON.stringify(error));
-    return response(500, { error: (error as Error).message })
+    return response(500, { error: (error as Error).message });
   }
 };
