@@ -1,5 +1,6 @@
-import { marshall } from "@aws-sdk/util-dynamodb";
-import { Movie } from "./types";
+import { marshall, marshallOptions, unmarshallOptions } from "@aws-sdk/util-dynamodb";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 
 export const generateMovieItem = (movie: Movie) => {
   return {
@@ -14,3 +15,18 @@ export const generateBatch = (data: Movie[]) => {
     return generateMovieItem(e);
   });
 };
+
+export function createDDbDocClient() {
+  const ddbClient = new DynamoDBClient({ region: process.env.REGION });
+  const marshall : marshallOptions = {
+    convertEmptyValues: true,
+    removeUndefinedValues: true,
+    convertClassInstanceToMap: true,
+  };
+  const unmarshall:  unmarshallOptions = {
+    wrapNumbers: false,
+  };
+  return DynamoDBDocumentClient.from(ddbClient, {
+    marshallOptions: marshall, unmarshallOptions: unmarshall
+  });
+}
