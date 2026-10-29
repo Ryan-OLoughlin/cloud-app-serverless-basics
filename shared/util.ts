@@ -14,4 +14,3 @@ export const generateBatch = (data: Movie[]) => {
     return generateMovieItem(e);
   });
 };
-
