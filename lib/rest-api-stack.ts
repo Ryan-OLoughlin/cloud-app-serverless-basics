@@ -3,13 +3,29 @@ import * as lambdanode from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as custom from "aws-cdk-lib/custom-resources";
+import * as apig from "aws-cdk-lib/aws-apigateway";
 import { generateBatch } from "../shared/util";
 import { movies, movieCasts } from "../seed/movies";
 import { Construct } from 'constructs';
 
+
 export class RestAPIStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
+
+    // REST API 
+    const api = new apig.RestApi(this, "MoviesAPI", {
+      description: "Movies API",
+      deployOptions: {
+        stageName: "dev",
+      },
+      // 👇 enable CORS
+      defaultCorsPreflightOptions: {
+        allowHeaders: ["Content-Type", "X-Amz-Date"],
+        allowMethods: ["OPTIONS", "GET", "POST", "PUT", "PATCH", "DELETE"],
+        allowOrigins: ["*"],
+      },
+    });
 
     const simpleFn = new lambdanode.NodejsFunction(this, "SimpleFn", {
       architecture: lambda.Architecture.ARM_64,
@@ -46,6 +62,36 @@ export class RestAPIStack extends cdk.Stack {
       sortKey: { name: "roleName", type: dynamodb.AttributeType.STRING },
     });
 
+// New Functions
+
+const appFn = (
+  name: string,
+  entry: string,
+  environment: Record<string, string> = {}
+) =>
+  new lambdanode.NodejsFunction(this, name, {
+    architecture: lambda.Architecture.ARM_64,
+    runtime: lambda.Runtime.NODEJS_22_X,
+    entry: `${__dirname}/../lambdas/${entry}`,
+    timeout: cdk.Duration.seconds(10),
+    memorySize: 128,
+    environment: {
+      TABLE_NAME: moviesTable.tableName,
+      REGION: this.region,
+      ...environment,
+    },
+  });
+
+  const getMovieByIdFn = appFn("GetMovieByIdFn", "getMovieById.ts");
+
+  const getMovieCastMembersFn = appFn(
+    "GetMovieCastFn",
+    "getMovieCastMembers.ts",
+    {
+      CAST_TABLE_NAME: movieCastsTable.tableName,
+    }
+  );
+
     const getAllMoviesFn = new lambdanode.NodejsFunction(
       this,
     "GetAllMoviesFn",
@@ -69,40 +115,47 @@ export class RestAPIStack extends cdk.Stack {
         },
       });
 
-    // NEW
-    const appFn = (
-      name: string,
-      entry: string,
-      environment: Record<string, string> = {}
-    ) =>
-      new lambdanode.NodejsFunction(this, name, {
-        architecture: lambda.Architecture.ARM_64,
-        runtime: lambda.Runtime.NODEJS_22_X,
-        entry: `${__dirname}/../lambdas/${entry}`,
-        timeout: cdk.Duration.seconds(10),
-        memorySize: 128,
-        environment: {
-          TABLE_NAME: moviesTable.tableName,
-          REGION: this.region,
-          ...environment,
-        },
-      });
+    // New API
 
-    const getMovieByIdFn = appFn("GetMovieByIdFn", "getMovieById.ts");
-    const getMovieCastMembersFn = appFn("GetMovieCastFn", "getMovieCastMembers.ts", {
-      CAST_TABLE_NAME: movieCastsTable.tableName,
-    });
+// New API
 
+// /movies
+const moviesEndpoint = api.root.addResource("movies");
 
+// GET /movies - Retrieve all movies
+moviesEndpoint.addMethod(
+  "GET",
+  new apig.LambdaIntegration(getAllMoviesFn)
+);
+
+// /movies/{movieId}
+const movieEndpoint = moviesEndpoint.addResource("{movieId}");
+
+// GET /movies/{movieId} - Retrieve a specific movie
+movieEndpoint.addMethod(
+  "GET",
+  new apig.LambdaIntegration(getMovieByIdFn)
+);
+
+// /movies/{movieId}/cast
+const movieCastEndpoint = movieEndpoint.addResource("cast");
+
+// GET /movies/{movieId}/cast - Retrieve movie cast
+movieCastEndpoint.addMethod(
+  "GET",
+  new apig.LambdaIntegration(getMovieCastMembersFn)
+);
+
+    // Permissions
     moviesTable.grantReadData(getMovieByIdFn);
     movieCastsTable.grantReadData(getMovieCastMembersFn);
     moviesTable.grantReadData(getMovieCastMembersFn);
     moviesTable.grantReadData(getAllMoviesFn);
 
+    // Output
     new cdk.CfnOutput(this, "Simple Function Url", { value: simpleFnURL.url });
-    new cdk.CfnOutput(this, "Get All Movies Function Url", {
-      value: getAllMoviesURL.url,
-    });
+    new cdk.CfnOutput(this, "Get All Movies Function Url", { value: getAllMoviesURL.url });
+    new cdk.CfnOutput(this, "MoviesAPIEndpoint", { value: api.url });
 
     new custom.AwsCustomResource(this, "moviesddbInitData", {
       onCreate: {
