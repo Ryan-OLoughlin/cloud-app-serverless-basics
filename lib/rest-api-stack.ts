@@ -92,6 +92,11 @@ const appFn = (
     }
   );
 
+    const addCastMemberFn = appFn("AddCastMember", 'addCastMember.ts', {
+      CAST_TABLE_NAME: movieCastsTable.tableName,
+      }
+    );
+
     const getAllMoviesFn = new lambdanode.NodejsFunction(
       this,
     "GetAllMoviesFn",
@@ -115,9 +120,7 @@ const appFn = (
         },
       });
 
-    // New API
-
-// New API
+// API
 
 // /movies
 const moviesEndpoint = api.root.addResource("movies");
@@ -146,11 +149,19 @@ movieCastEndpoint.addMethod(
   new apig.LambdaIntegration(getMovieCastMembersFn)
 );
 
+// /cast
+    moviesEndpoint.addResource('cast').addMethod(
+        "POST",
+        new apig.LambdaIntegration(addCastMemberFn, { proxy: true })
+    );
+
     // Permissions
     moviesTable.grantReadData(getMovieByIdFn);
     movieCastsTable.grantReadData(getMovieCastMembersFn);
     moviesTable.grantReadData(getMovieCastMembersFn);
     moviesTable.grantReadData(getAllMoviesFn);
+    moviesTable.grantReadData(addCastMemberFn);
+    movieCastsTable.grantReadWriteData(addCastMemberFn)
 
     // Output
     new cdk.CfnOutput(this, "Simple Function Url", { value: simpleFnURL.url });
